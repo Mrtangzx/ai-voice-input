@@ -94,22 +94,31 @@ impl Sidecar {
 
 pub async fn spawn(app: &tauri::AppHandle, kind: SidecarKind) -> Result<Child> {
     let resource_dir = app.path().resource_dir()?;
-    let models_dir = resource_dir.join("sidecar").join("models");
-    let bin = resource_dir.join("sidecar").join(kind.binary_name());
+    let sidecar_dir = resource_dir.join("sidecar");
+    let models_dir = sidecar_dir.join("models");
 
-    let mut cmd = Command::new(bin);
-    cmd.arg("--port").arg(kind.default_port().to_string());
-    match kind {
+    let mut cmd = match kind {
+        // Whisper: use Python sidecar (whisper.cpp Windows binary not available
+        // in this build env; the Python script wraps ONNX models into the
+        // same OpenAI-compatible HTTP API)
         SidecarKind::Whisper => {
-            cmd.arg("--model").arg(kind.model_path(&models_dir));
-            cmd.arg("-l").arg("auto");
+            let script = sidecar_dir.join("whisper-asr.py");
+            let mut c = Command::new("python");
+            c.arg(&script);
+            c.env("ASR_PORT", kind.default_port().to_string());
+            c.env("ASR_MODEL_DIR", sidecar_dir.join("whisper-model"));
+            c
         }
         SidecarKind::Llama => {
-            cmd.arg("-m").arg(kind.model_path(&models_dir));
-            cmd.arg("-c").arg("4096");
-            cmd.arg("--host").arg("127.0.0.1");
+            let bin = sidecar_dir.join(kind.binary_name());
+            let mut c = Command::new(bin);
+            c.arg("-m").arg(kind.model_path(&models_dir));
+            c.arg("-c").arg("4096");
+            c.arg("--host").arg("127.0.0.1");
+            c.arg("--port").arg(kind.default_port().to_string());
+            c
         }
-    }
+    };
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
     Ok(cmd.spawn()?)
 }
