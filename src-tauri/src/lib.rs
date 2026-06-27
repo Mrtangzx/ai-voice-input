@@ -3,7 +3,7 @@ mod hotkey;
 mod audio;
 mod insert;
 mod sidecar;
-mod storage;
+pub mod storage;
 mod overlay;
 mod pipeline;
 
