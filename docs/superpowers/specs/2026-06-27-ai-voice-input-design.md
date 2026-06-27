@@ -86,7 +86,7 @@
 | `commands/models.rs` | 模型下载/状态 IPC 命令 | reqwest, sha2 |
 | `hotkey.rs` | 全局快捷键注册 | tauri-plugin-global-shortcut |
 | `audio.rs` | 麦克风采集 → 16kHz mono PCM | cpal, rubato |
-| `insert.rs` | Windows UI Automation 模拟粘贴 | enigo, arboard |
+| `insert.rs` | 剪贴板 + 模拟 Ctrl+V 插入（详见 §6 关键技术点） | enigo, arboard |
 | `sidecar.rs` | 启停 sidecar + HTTP 调用 | reqwest, tokio |
 | `storage.rs` | SQLite 封装 | sqlx |
 | `overlay.rs` | 悬浮胶囊窗口 | tauri::WebviewWindow |
@@ -113,8 +113,8 @@ React + TypeScript + Vite。3 个视图：
    └─ hotkey.rs 拦截 → emit 'recording-started'
    └─ overlay.rs 在光标附近显示胶囊
 2. audio.rs 用 cpal 采集 16kHz mono PCM
-   └─ 流式 push 到 ring buffer（最大 60s 防失控）
-3. 用户再次按热键（或 30s 自动停止）
+   └─ 流式 push 到 ring buffer（最大 60s，作为 buffer 容量上限；正常使用时由步骤 3 的自动停止提前终止）
+3. 用户再次按热键（或达到 auto_stop_seconds 后自动停止，默认 30s）
    └─ audio.rs 停止 → 编码 WAV → POST /v1/audio/transcriptions 到 whisper-server
 4. whisper-server 返回 segments JSON
    └─ 合并为纯文本 → POST /v1/chat/completions 到 llama-server
@@ -212,7 +212,7 @@ CREATE VIRTUAL TABLE transcripts_fts USING fts5(
 1. ✅ 全新安装 → 首次启动引导下模型
 2. ✅ 录音 10s 中英混合 → 文字插入正确
 3. ✅ 录音含「嗯」「啊」「那个」→ 输出整理后无口头禅
-4. ✅ 长时间录音 60s → 自动停止
+4. ✅ 长时间录音达到 auto_stop_seconds（默认 30s）→ 自动停止
 5. ✅ 重启电脑 → 快捷键和 sidecar 都自动拉起
 6. ✅ 故意断网 → 离线模式仍能用
 7. ✅ 卸载 → AppData 被清理（除日志外）
