@@ -29,9 +29,10 @@ impl ModelSpec {
         Self {
             name: "qwen2.5-7b-instruct-q4".into(),
             filename: "qwen2.5-7b-instruct-q4.gguf".into(),
-            url: "https://huggingface.co/Qwen/Qwen2.5-7B-Instruct-GGUF/resolve/main/qwen2.5-7b-instruct-q4_k_m.gguf".into(),
+            // modelscope.cn mirror (HF/GitHub blocked in this environment)
+            url: "https://www.modelscope.cn/qwen/Qwen2.5-7B-Instruct-GGUF/resolve/master/qwen2.5-7b-instruct-q4_k_m.gguf".into(),
             sha256: "0000000000000000000000000000000000000000000000000000000000000000".into(),
-            size_bytes: 4_500_000_000,
+            size_bytes: 4_683_073_536,
         }
     }
     pub fn filename_path(&self, models_dir: &Path) -> PathBuf { models_dir.join(&self.filename) }
