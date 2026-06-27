@@ -1,0 +1,7 @@
+{
+  "tool_name": "Bash",
+  "tool_input_preview": "{\"command\":\"where WebView2Loader.dll 2>&1 && echo \\\"---\\\" && reg query \\\"HKLM\\\\SOFTWARE\\\\WOW6432Node\\\\Microsoft\\\\EdgeUpdate\\\\Clients\\\\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}\\\" 2>&1 | head -10\",\"descrip...",
+  "error": "Exit code 1\n��Ϣ: ���ṩ��ģʽ�޷��ҵ��ļ���",
+  "timestamp": "2026-06-27T04:56:52.286Z",
+  "retry_count": 1
+}
