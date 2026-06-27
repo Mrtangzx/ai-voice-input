@@ -11,6 +11,27 @@ pub struct Settings {
     pub cleanup_intensity: CleanupIntensity,
     pub auto_launch: bool,
     pub overlay_follow_cursor: bool,
+    /// Which LLM to use for cleanup. "local" uses the bundled llama.cpp;
+    /// "deepseek" / "qwen" call the respective online APIs.
+    #[serde(default = "default_llm_provider")]
+    pub llm_provider: LlmProvider,
+    /// API key for the cloud LLM provider. Empty when using local.
+    #[serde(default)]
+    pub llm_api_key: String,
+    /// Model name to use with the chosen cloud provider.
+    #[serde(default = "default_llm_model")]
+    pub llm_model: String,
+}
+
+fn default_llm_provider() -> LlmProvider { LlmProvider::Local }
+fn default_llm_model() -> String { "deepseek-chat".into() }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum LlmProvider {
+    Local,
+    DeepSeek,
+    QwenDashScope,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -31,6 +52,9 @@ impl Default for Settings {
             cleanup_intensity: CleanupIntensity::Normal,
             auto_launch: true,
             overlay_follow_cursor: true,
+            llm_provider: LlmProvider::Local,
+            llm_api_key: String::new(),
+            llm_model: "deepseek-chat".into(),
         }
     }
 }
@@ -41,6 +65,8 @@ impl Settings {
             return Ok(Self::default());
         }
         let txt = std::fs::read_to_string(path)?;
+        // Older settings files may be missing the new fields; serde will
+        // use the defaults above thanks to `#[serde(default = ...)]`.
         let s: Settings = serde_json::from_str(&txt).unwrap_or_default();
         Ok(s)
     }
@@ -52,6 +78,17 @@ impl Settings {
         let txt = serde_json::to_string_pretty(self)?;
         std::fs::write(path, txt)?;
         Ok(())
+    }
+}
+
+/// Returns the recommended (provider, model) pair for the chosen provider.
+/// Useful when the user just toggled a new provider and we want to
+/// pre-fill the model field with a sensible default.
+pub fn default_model_for(provider: &LlmProvider) -> &'static str {
+    match provider {
+        LlmProvider::DeepSeek => "deepseek-chat",
+        LlmProvider::QwenDashScope => "qwen-turbo",
+        LlmProvider::Local => "local",
     }
 }
 
@@ -85,10 +122,14 @@ mod tests {
 
         let mut s = Settings::load_or_default(&path).unwrap();
         s.hotkey = "Ctrl+Alt+V".into();
+        s.llm_provider = LlmProvider::DeepSeek;
+        s.llm_api_key = "sk-test".into();
         s.save(&path).unwrap();
 
         let loaded = Settings::load_or_default(&path).unwrap();
         assert_eq!(loaded.hotkey, "Ctrl+Alt+V");
+        assert_eq!(loaded.llm_provider, LlmProvider::DeepSeek);
+        assert_eq!(loaded.llm_api_key, "sk-test");
     }
 
     #[test]
@@ -99,6 +140,7 @@ mod tests {
         assert_eq!(s.hotkey, "Ctrl+Shift+Space");
         assert_eq!(s.auto_stop_seconds, 30);
         assert_eq!(s.model_variant, ModelVariant::Balanced);
+        assert_eq!(s.llm_provider, LlmProvider::Local);
     }
 
     #[test]
@@ -108,5 +150,32 @@ mod tests {
         std::fs::write(&path, "{ this is not valid json").unwrap();
         let s = Settings::load_or_default(&path).unwrap();
         assert_eq!(s.hotkey, "Ctrl+Shift+Space");
+    }
+
+    #[test]
+    fn legacy_settings_without_llm_fields_load() {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("legacy.json");
+        // Simulate an older settings file written before LLM fields existed.
+        std::fs::write(&path, r#"{
+            "hotkey": "Ctrl+Alt+V",
+            "mic_device_id": null,
+            "auto_stop_seconds": 20,
+            "model_variant": "balanced",
+            "cleanup_intensity": "normal",
+            "auto_launch": false,
+            "overlay_follow_cursor": true
+        }"#).unwrap();
+        let s = Settings::load_or_default(&path).unwrap();
+        assert_eq!(s.hotkey, "Ctrl+Alt+V");
+        assert_eq!(s.llm_provider, LlmProvider::Local);
+        assert_eq!(s.llm_api_key, "");
+        assert_eq!(s.llm_model, "deepseek-chat");
+    }
+
+    #[test]
+    fn default_model_for_provider() {
+        assert_eq!(default_model_for(&LlmProvider::DeepSeek), "deepseek-chat");
+        assert_eq!(default_model_for(&LlmProvider::QwenDashScope), "qwen-turbo");
     }
 }

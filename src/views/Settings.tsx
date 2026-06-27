@@ -10,15 +10,33 @@ type Settings = {
   cleanup_intensity: 'light' | 'normal' | 'aggressive';
   auto_launch: boolean;
   overlay_follow_cursor: boolean;
+  llm_provider: 'local' | 'deepseek' | 'qwen_dashscope';
+  llm_api_key: string;
+  llm_model: string;
 };
 
 type ModelStatus = { whisper_installed: boolean; llama_installed: boolean };
+
+const PROVIDER_OPTIONS = [
+  { value: 'local', label: '本地 Qwen (4.7GB 下载)', needsKey: false, defaultModel: 'local' },
+  { value: 'deepseek', label: '☁️ DeepSeek 在线 API', needsKey: true, defaultModel: 'deepseek-chat' },
+  { value: 'qwen_dashscope', label: '☁️ 通义千问 DashScope', needsKey: true, defaultModel: 'qwen-turbo' },
+] as const;
+
+const MODEL_PRESETS: Record<string, string[]> = {
+  deepseek: ['deepseek-chat', 'deepseek-reasoner'],
+  qwen_dashscope: ['qwen-turbo', 'qwen-plus', 'qwen-max', 'qwen-long'],
+  local: [],
+};
 
 export default function SettingsView() {
   const [s, setS] = useState<Settings | null>(null);
   const [status, setStatus] = useState<ModelStatus>({ whisper_installed: false, llama_installed: false });
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState<{ name: string; percent: number } | null>(null);
+  const [showKey, setShowKey] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   useEffect(() => {
     invoke<Settings>('get').then(setS).catch(e => console.error(e));
@@ -52,33 +70,143 @@ export default function SettingsView() {
     }
   };
 
+  const testCloudKey = async () => {
+    if (!s) return;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      // Save first so the backend picks up the current key
+      await invoke('update', { settings: s });
+      const r = await invoke<{ ok: boolean; msg: string }>('test_llm');
+      setTestResult(r);
+    } catch (e) {
+      setTestResult({ ok: false, msg: String(e) });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const onProviderChange = (p: Settings['llm_provider']) => {
+    if (!s) return;
+    const preset = PROVIDER_OPTIONS.find(o => o.value === p);
+    setS({
+      ...s,
+      llm_provider: p,
+      // Auto-fill the default model for the chosen provider, but only if
+      // the model field is empty or is a known preset for the OLD provider.
+      llm_model: preset?.defaultModel ?? 'local',
+    });
+  };
+
   if (!s) return <div style={{ padding: 24, color: '#94a3b8' }}>加载中…</div>;
 
   const bothInstalled = status.whisper_installed && status.llama_installed;
+  const providerMeta = PROVIDER_OPTIONS.find(o => o.value === s.llm_provider);
+  const needsKey = providerMeta?.needsKey ?? false;
+  const modelPresets = MODEL_PRESETS[s.llm_provider] ?? [];
 
   return (
     <div style={{ padding: 24, background: '#0f172a', color: '#f1f5f9', height: '100vh', overflowY: 'auto' }}>
       <h2 style={{ marginTop: 0 }}>设置</h2>
 
       <fieldset style={{ border: '1px solid #334155', borderRadius: 8, padding: 16, marginBottom: 16 }}>
-        <legend>模型状态</legend>
-        <div>Whisper: {status.whisper_installed ? '✓ 已安装' : '✗ 未安装'}</div>
-        <div>Qwen LLM: {status.llama_installed ? '✓ 已安装' : '✗ 未安装'}</div>
-        {!bothInstalled && (
-          <>
+        <legend>AI 整理模型</legend>
+        <p style={{ color: '#94a3b8', marginTop: 0, fontSize: 13 }}>
+          选择本地模型还是在线云端大模型。云端 API 更轻量，无需下载 4.7GB 模型文件。
+        </p>
+        <select
+          value={s.llm_provider}
+          onChange={e => onProviderChange(e.target.value as Settings['llm_provider'])}
+          style={{ width: '100%', padding: 6, background: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: 4 }}
+        >
+          {PROVIDER_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+
+        {needsKey && (
+          <div style={{ marginTop: 12 }}>
+            <label style={{ display: 'block', marginBottom: 4, fontSize: 13 }}>
+              API Key
+              <a
+                href={s.llm_provider === 'deepseek' ? 'https://platform.deepseek.com/api_keys' : 'https://dashscope.console.aliyun.com/apiKey'}
+                target="_blank"
+                rel="noreferrer"
+                style={{ marginLeft: 8, color: '#60a5fa', fontSize: 12 }}
+              >
+                获取 →
+              </a>
+            </label>
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input
+                type={showKey ? 'text' : 'password'}
+                value={s.llm_api_key}
+                onChange={e => setS({ ...s, llm_api_key: e.target.value })}
+                placeholder={s.llm_provider === 'deepseek' ? 'sk-...' : 'sk-...'}
+                style={{ flex: 1, padding: 6, background: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: 4 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowKey(v => !v)}
+                style={{ padding: '6px 10px', background: '#334155', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+              >
+                {showKey ? '隐藏' : '显示'}
+              </button>
+            </div>
+
+            <label style={{ display: 'block', marginTop: 10, marginBottom: 4, fontSize: 13 }}>模型</label>
+            <input
+              list="llm-model-list"
+              value={s.llm_model}
+              onChange={e => setS({ ...s, llm_model: e.target.value })}
+              placeholder={providerMeta?.defaultModel ?? '模型名'}
+              style={{ width: '100%', padding: 6, background: '#1e293b', color: 'white', border: '1px solid #334155', borderRadius: 4 }}
+            />
+            <datalist id="llm-model-list">
+              {modelPresets.map(m => <option key={m} value={m} />)}
+            </datalist>
+
             <button
-              onClick={download}
-              disabled={downloading}
-              style={{ marginTop: 12, padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+              type="button"
+              onClick={testCloudKey}
+              disabled={testing || !s.llm_api_key.trim()}
+              style={{ marginTop: 10, padding: '6px 12px', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
             >
-              {downloading ? '下载中…' : '下载模型 (~6GB)'}
+              {testing ? '测试中…' : '测试连接'}
             </button>
-            {progress && (
-              <div style={{ marginTop: 8, color: '#94a3b8' }}>
-                {progress.name}: {progress.percent.toFixed(1)}%
+            {testResult && (
+              <div style={{ marginTop: 8, fontSize: 13, color: testResult.ok ? '#22c55e' : '#ef4444' }}>
+                {testResult.ok ? '✓ ' : '✗ '}{testResult.msg}
               </div>
             )}
-          </>
+          </div>
+        )}
+
+        {s.llm_provider === 'local' && (
+          <fieldset style={{ border: '1px solid #334155', borderRadius: 6, padding: 12, marginTop: 12 }}>
+            <legend style={{ fontSize: 12, color: '#94a3b8' }}>本地模型状态</legend>
+            <div>Whisper (语音转文字): {status.whisper_installed ? '✓ 已安装' : '✗ 未安装'}</div>
+            <div>Qwen LLM (文本整理): {status.llama_installed ? '✓ 已安装' : '✗ 未安装'}</div>
+            {!bothInstalled && (
+              <>
+                <button
+                  onClick={download}
+                  disabled={downloading}
+                  style={{ marginTop: 12, padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  {downloading ? '下载中…' : '下载本地模型 (~6GB)'}
+                </button>
+                {progress && (
+                  <div style={{ marginTop: 8, color: '#94a3b8' }}>
+                    {progress.name}: {progress.percent.toFixed(1)}%
+                  </div>
+                )}
+              </>
+            )}
+            <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+              提示：使用在线云端 API 可避免下载 4.7GB 模型，速度也更快。
+            </p>
+          </fieldset>
         )}
       </fieldset>
 

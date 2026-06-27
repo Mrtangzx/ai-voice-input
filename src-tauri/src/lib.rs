@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod cloud_llm;
 mod hotkey;
 mod audio;
 mod insert;
@@ -102,6 +103,7 @@ pub fn run() {
             commands::settings::update,
             commands::models::status,
             commands::models::download,
+            commands::cloud_llm::test_llm,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

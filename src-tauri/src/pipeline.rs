@@ -5,11 +5,14 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 use crate::audio;
+use crate::cloud_llm::{CloudConfig, CloudLlm};
+use crate::commands::settings::{default_model_for, LlmProvider, Settings};
 use crate::insert;
 use crate::overlay;
-use crate::sidecar::{Sidecar, SidecarKind};
+use crate::sidecar::Sidecar;
 use crate::storage::{Storage, Transcript};
 use chrono::Utc;
+use tauri::Manager;
 
 static RECORDING: AtomicBool = AtomicBool::new(false);
 
@@ -45,6 +48,7 @@ async fn inner(
     llama: Arc<Sidecar>,
     auto_stop: Duration,
 ) -> Result<()> {
+    let _ = llama; // kept for future use; cleanup now goes via cleanup_with_settings
     let _ = overlay::show(&app, "recording", None);
     let _ = app.emit("pipeline-status", serde_json::json!({"phase":"recording"}));
 
@@ -77,11 +81,28 @@ async fn inner(
         return Err(anyhow!("empty transcription"));
     }
 
+    // Decide which LLM to use based on settings.
+    let settings = load_settings(&app).unwrap_or_default();
+    let cleanup_phrase = match settings.llm_provider {
+        LlmProvider::Local => "本地 LLM 整理中…",
+        LlmProvider::DeepSeek => "DeepSeek 整理中…",
+        LlmProvider::QwenDashScope => "通义千问整理中…",
+    };
     let _ = overlay::show(&app, "cleaning", None);
-    let _ = app.emit("pipeline-status", serde_json::json!({"phase":"cleaning"}));
-    let clean_text = match llama.cleanup(&raw_text).await {
+    let _ = app.emit("pipeline-status", serde_json::json!({"phase":"cleaning","step": cleanup_phrase}));
+
+    let clean_text = match cleanup_with_settings(&app, &settings, &raw_text).await {
         Ok(s) if !s.trim().is_empty() => s,
-        _ => raw_text.clone(),
+        Ok(_) => raw_text.clone(),     // provider returned empty - fall back to raw
+        Err(e) => {
+            // Cloud LLM failures (no key, network down, rate-limit) should not
+            // break the whole flow - paste the raw transcript and log.
+            tracing::warn!("cleanup failed: {e}; using raw text");
+            let _ = app.emit("pipeline-status", serde_json::json!({
+                "phase":"cleaning","warning": e.to_string()
+            }));
+            raw_text.clone()
+        }
     };
 
     if !insert::foreground_rejects_text() {
@@ -102,4 +123,45 @@ async fn inner(
     let _ = overlay::show(&app, "done", Some(&clean_text));
     let _ = app.emit("pipeline-status", serde_json::json!({"phase":"done","clean":clean_text}));
     Ok(())
+}
+
+/// Dispatch the cleanup step based on the user's chosen provider.
+async fn cleanup_with_settings(
+    app: &AppHandle,
+    settings: &Settings,
+    raw_text: &str,
+) -> Result<String> {
+    match settings.llm_provider {
+        LlmProvider::Local => {
+            // Try the local llama-server; fall back gracefully if not running.
+            let llama = app.state::<crate::AppState>().llama.clone();
+            llama.cleanup(raw_text).await
+        }
+        LlmProvider::DeepSeek | LlmProvider::QwenDashScope => {
+            let api_key = settings.llm_api_key.trim();
+            if api_key.is_empty() {
+                return Err(anyhow!("未配置云端 API Key"));
+            }
+            // Use the user-set model, or the recommended default if blank.
+            let model_raw = settings.llm_model.trim();
+            let model = if model_raw.is_empty() {
+                default_model_for(&settings.llm_provider).to_string()
+            } else {
+                model_raw.to_string()
+            };
+            let cfg = CloudConfig {
+                provider: settings.llm_provider.clone(),
+                api_key: api_key.to_string(),
+                model,
+            };
+            let cloud = CloudLlm::new(cfg);
+            cloud.cleanup(raw_text, settings.cleanup_intensity.clone()).await
+        }
+    }
+}
+
+fn load_settings(app: &AppHandle) -> Result<Settings> {
+    use tauri::Manager;
+    let state = app.state::<crate::AppState>();
+    Settings::load_or_default(&state.settings_path).map_err(Into::into)
 }
