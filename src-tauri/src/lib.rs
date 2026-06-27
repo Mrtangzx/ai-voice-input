@@ -66,6 +66,30 @@ pub fn run() {
                 })?;
             }
 
+            // System tray icon
+            #[cfg(desktop)]
+            {
+                use tauri::tray::TrayIconBuilder;
+                let _tray = TrayIconBuilder::with_id("main-tray")
+                    .tooltip("AI Voice Input")
+                    .icon(app.default_window_icon().unwrap().clone())
+                    .menu(&tauri::menu::Menu::with_items(app, &[
+                        &tauri::menu::MenuItem::with_id(app, "show", "打开主界面", true, None::<&str>)?,
+                        &tauri::menu::MenuItem::with_id(app, "quit", "退出", true, None::<&str>)?,
+                    ])?)
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "show" => {
+                            if let Some(w) = app.get_webview_window("main") {
+                                let _ = w.show();
+                                let _ = w.set_focus();
+                            }
+                        }
+                        "quit" => { app.exit(0); }
+                        _ => {}
+                    })
+                    .build(app)?;
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

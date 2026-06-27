@@ -14,6 +14,7 @@ pub fn show(app: &AppHandle, phase: &str, text: Option<&str>) -> tauri::Result<(
 pub fn hide(app: &AppHandle) -> tauri::Result<()> {
     if let Some(w) = app.get_webview_window("overlay") {
         w.hide()?;
+        let _ = app.emit_to("overlay", "overlay-update", serde_json::json!({"phase":"idle"}));
     }
     Ok(())
 }
