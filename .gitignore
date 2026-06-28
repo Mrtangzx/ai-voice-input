@@ -16,3 +16,5 @@ sidecar/whisper-model/*.onnx
 .superpowers/
 *.log
 .omc/
+# ModelScope models (downloaded by user)
+sidecar/modelscope/

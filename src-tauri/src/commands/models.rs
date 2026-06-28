@@ -6,6 +6,71 @@ use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::AsyncWriteExt;
 
+/// SenseVoiceSmall from ModelScope - the recommended ASR for Chinese.
+/// Smaller (893 MB) and ~10x faster than whisper-medium on CPU.
+pub fn sensevoice_model_path(sidecar_dir: &Path) -> PathBuf {
+    sidecar_dir
+        .join("modelscope")
+        .join("iic")
+        .join("SenseVoiceSmall")
+        .join("model.pt")
+}
+
+#[tauri::command]
+pub async fn download_sensevoice(app: AppHandle) -> Result<(), String> {
+    let sidecar_dir = crate::sidecar::resolve_sidecar_dir(&app).map_err(|e| e.to_string())?;
+    // Re-use the standard URL that the ModelScope Python SDK uses, so a
+    // user who already ran snapshot_download() locally won't re-download.
+    // Snapshot URL: https://www.modelscope.cn/models/iic/SenseVoiceSmall/files
+    let url = "https://www.modelscope.cn/api/v1/models/iic/SenseVoiceSmall/repo?Revision=master&FilePath=model.pt";
+    let target = sensevoice_model_path(&sidecar_dir);
+    if let Some(parent) = target.parent() {
+        tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+    }
+    if target.exists() {
+        tracing::info!("sensevoice model already present at {}", target.display());
+        return Ok(());
+    }
+    let _ = app.emit("model-download-progress", serde_json::json!({
+        "name": "SenseVoiceSmall", "downloaded": 0u64, "total": 936_291_369u64, "percent": 0.0,
+    }));
+    let client = reqwest::Client::new();
+    let mut res = client.get(url).send().await.map_err(|e| e.to_string())?;
+    if !res.status().is_success() {
+        // Fall back to a direct HF mirror in case modelscope API ever moves.
+        let hf_url = "https://hf-mirror.com/funasr/sensevoice-small/resolve/main/model.pt";
+        res = client.get(hf_url).send().await.map_err(|e| e.to_string())?;
+    }
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("download failed: HTTP {status}"));
+    }
+    let total = res.content_length().unwrap_or(936_291_369);
+    let mut downloaded: u64 = 0;
+    let mut stream = res.bytes_stream();
+    let mut file = tokio::fs::File::create(&target).await.map_err(|e| e.to_string())?;
+    let mut last_pct: f64 = -1.0;
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| e.to_string())?;
+        downloaded += chunk.len() as u64;
+        file.write_all(&chunk).await.map_err(|e| e.to_string())?;
+        let pct = (downloaded as f64 / total as f64) * 100.0;
+        if pct - last_pct >= 1.0 {
+            last_pct = pct;
+            let _ = app.emit("model-download-progress", serde_json::json!({
+                "name": "SenseVoiceSmall",
+                "downloaded": downloaded,
+                "total": total,
+                "percent": pct,
+            }));
+        }
+    }
+    let _ = app.emit("model-download-progress", serde_json::json!({
+        "name": "SenseVoiceSmall", "downloaded": downloaded, "total": total, "percent": 100.0,
+    }));
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelSpec {
     pub name: String,
@@ -104,6 +169,8 @@ pub async fn download_one(app: &AppHandle, spec: ModelSpec) -> Result<()> {
 pub struct ModelStatus {
     /// Whisper ONNX model files are present (voice → text will work offline).
     pub whisper_installed: bool,
+    /// SenseVoice model from ModelScope is present (faster Chinese ASR).
+    pub sensevoice_installed: bool,
     /// Qwen GGUF model file is present (needed for local LLM cleanup).
     pub llama_model_installed: bool,
     /// llama-server binary is present and non-empty (needed to RUN the local LLM).
@@ -121,6 +188,7 @@ pub async fn status(app: AppHandle) -> Result<ModelStatus, String> {
         .map_err(|e| e.to_string())?;
     let models_dir = sidecar_dir.join("models");
     let whisper_installed = ModelSpec::whisper_medium().filename_path(&models_dir).exists();
+    let sensevoice_installed = sensevoice_model_path(&sidecar_dir).exists();
     let llama_model_installed = ModelSpec::qwen_7b_q4().filename_path(&models_dir).exists();
 
     // The llama-server binary is shipped via Tauri's `externalBin` in the
@@ -137,6 +205,7 @@ pub async fn status(app: AppHandle) -> Result<ModelStatus, String> {
 
     Ok(ModelStatus {
         whisper_installed,
+        sensevoice_installed,
         llama_model_installed,
         llama_binary_installed,
         llama_installed,

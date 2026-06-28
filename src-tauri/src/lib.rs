@@ -127,6 +127,7 @@ pub fn run() {
             commands::settings::update,
             commands::models::status,
             commands::models::download,
+            commands::models::download_sensevoice,
             commands::cloud_llm::test_llm,
         ])
         .run(tauri::generate_context!())

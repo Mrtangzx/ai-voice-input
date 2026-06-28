@@ -17,6 +17,7 @@ type Settings = {
 
 type ModelStatus = {
   whisper_installed: boolean;
+  sensevoice_installed: boolean;
   llama_model_installed: boolean;
   llama_binary_installed: boolean;
   llama_installed: boolean;
@@ -39,6 +40,7 @@ export default function SettingsView() {
   const [s, setS] = useState<Settings | null>(null);
   const [status, setStatus] = useState<ModelStatus>({
     whisper_installed: false,
+    sensevoice_installed: false,
     llama_model_installed: false,
     llama_binary_installed: false,
     llama_installed: false,
@@ -76,6 +78,21 @@ export default function SettingsView() {
       setStatus(st);
     } catch (e) {
       alert('下载失败：' + e);
+    } finally {
+      setDownloading(false);
+      setProgress(null);
+    }
+  };
+
+  const downloadSenseVoice = async () => {
+    setDownloading(true);
+    try {
+      await invoke('download_sensevoice');
+      const st = await invoke<ModelStatus>('status');
+      setStatus(st);
+      alert('SenseVoice 模型已下载。重启 App 后会自动切换到 SenseVoice。');
+    } catch (e) {
+      alert('SenseVoice 下载失败：' + e);
     } finally {
       setDownloading(false);
       setProgress(null);
@@ -197,8 +214,12 @@ export default function SettingsView() {
         {s.llm_provider === 'local' && (
           <fieldset style={{ border: '1px solid #334155', borderRadius: 6, padding: 12, marginTop: 12 }}>
             <legend style={{ fontSize: 12, color: '#94a3b8' }}>本地模型状态</legend>
-            <div>Whisper (语音转文字): {status.whisper_installed ? '✓ 已安装' : '✗ 未安装'}</div>
-            <div>Qwen 模型文件: {status.llama_model_installed ? '✓ 已下载' : '✗ 未下载'}</div>
+            <div>Whisper (英文优先): {status.whisper_installed ? '✓ 已安装' : '✗ 未安装'}</div>
+            <div>SenseVoice (中文优化，CPU 快 10×): {status.sensevoice_installed ? '✓ 已安装' : '✗ 未安装'}</div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+              启动时优先用 SenseVoice，没有时回退 Whisper
+            </div>
+            <div style={{ marginTop: 6 }}>Qwen 模型文件: {status.llama_model_installed ? '✓ 已下载' : '✗ 未下载'}</div>
             <div>llama-server 二进制: {status.llama_binary_installed ? '✓ 已安装' : '✗ 缺失或为空'}</div>
             {status.llama_model_installed && !status.llama_binary_installed && (
               <div style={{ marginTop: 8, padding: 8, background: '#7c2d12', color: '#fed7aa', borderRadius: 4, fontSize: 12 }}>
@@ -207,21 +228,30 @@ export default function SettingsView() {
                 解决：① 切换到上方"☁️ 在线云端 API" ② 或手动把 llama-server.exe 放到上述目录
               </div>
             )}
-            {!bothInstalled && (
-              <>
+            <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
+              {!status.sensevoice_installed && (
+                <button
+                  onClick={downloadSenseVoice}
+                  disabled={downloading}
+                  style={{ padding: '6px 12px', background: '#16a34a', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                >
+                  {downloading ? '下载中…' : '下载 SenseVoice (893MB，中文推荐)'}
+                </button>
+              )}
+              {!bothInstalled && (
                 <button
                   onClick={download}
                   disabled={downloading}
-                  style={{ marginTop: 12, padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
+                  style={{ padding: '6px 12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
                 >
-                  {downloading ? '下载中…' : '下载本地模型 (~6GB)'}
+                  {downloading ? '下载中…' : '下载 Whisper + Qwen (~6GB)'}
                 </button>
-                {progress && (
-                  <div style={{ marginTop: 8, color: '#94a3b8' }}>
-                    {progress.name}: {progress.percent.toFixed(1)}%
-                  </div>
-                )}
-              </>
+              )}
+            </div>
+            {progress && (
+              <div style={{ marginTop: 8, color: '#94a3b8' }}>
+                {progress.name}: {progress.percent.toFixed(1)}%
+              </div>
             )}
             <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 8, marginBottom: 0 }}>
               提示：使用在线云端 API 可避免下载 4.7GB 模型，速度也更快。
