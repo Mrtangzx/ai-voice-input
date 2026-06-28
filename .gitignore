@@ -3,8 +3,16 @@ dist/
 src-tauri/target/
 src-tauri/Cargo.lock
 src-tauri/.omc/
+
+# Sidecar binaries and large model files - users download these separately.
+# Source repo keeps only the python script and small config files.
 sidecar/*.exe
 sidecar/models/
+sidecar/__pycache__/
+sidecar/whisper-model/*.onnx
+!sidecar/whisper-model/*.json
+!sidecar/whisper-model/*.txt
+
 .superpowers/
 *.log
 .omc/
