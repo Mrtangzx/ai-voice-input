@@ -14,7 +14,9 @@ pub fn parse_hotkey(s: &str) -> Option<tauri_plugin_global_shortcut::Shortcut> {
         "space" => Code::Space,
         "v" => Code::KeyV,
         "t" => Code::KeyT,
+        "d" => Code::KeyD,
         "z" => Code::KeyZ,
+        "q" => Code::KeyQ,
         "f1" => Code::F1,
         "f2" => Code::F2,
         // The '+' (plus) key is a hotkey delimiter in this string format, so
