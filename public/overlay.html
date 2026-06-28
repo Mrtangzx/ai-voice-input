@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Voice Input Overlay</title>
+  <style>
+    html, body {
+      margin: 0; padding: 0; overflow: hidden;
+      background: transparent;
+      font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
+      color: #f1f5f9;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .bubble {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid #334155;
+      border-radius: 22px;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+      font-size: 13px;
+      max-width: 360px;
+      min-height: 36px;
+      transition: all 0.15s ease;
+    }
+    .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #94a3b8;
+      flex-shrink: 0;
+    }
+    .phase-recording .dot { background: #ef4444; animation: pulse 1s infinite; }
+    .phase-transcribing .dot { background: #f59e0b; animation: pulse 1s infinite; }
+    .phase-cleaning .dot { background: #3b82f6; animation: pulse 1s infinite; }
+    .phase-done .dot { background: #22c55e; }
+    .phase-error .dot { background: #ef4444; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    .text {
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+      flex: 1;
+    }
+    .text:empty::before { content: attr(data-placeholder); color: #94a3b8; }
+  </style>
+</head>
+<body class="phase-idle">
+  <div class="bubble" id="bubble">
+    <span class="dot"></span>
+    <span class="text" id="text" data-placeholder="就绪"></span>
+  </div>
+  <script>
+    const bubble = document.getElementById('bubble');
+    const text = document.getElementById('text');
+    const phaseMap = {
+      idle:        { phase: 'idle',        text: '就绪',                     class: 'phase-idle' },
+      recording:   { phase: 'recording',   text: '正在听…',                  class: 'phase-recording' },
+      transcribing:{ phase: 'transcribing',text: '转写中…',                  class: 'phase-transcribing' },
+      cleaning:    { phase: 'cleaning',    text: 'AI 整理中…',              class: 'phase-cleaning' },
+      done:        { phase: 'done',        text: '',                          class: 'phase-done' },
+      error:       { phase: 'error',       text: '出错了',                   class: 'phase-error' },
+    };
+    const { listen } = window.__TAURI__.event;
+    listen('overlay-update', (e) => {
+      const { phase, text: t } = e.payload;
+      const cfg = phaseMap[phase] || phaseMap.idle;
+      document.body.className = cfg.class;
+      text.textContent = t || cfg.text;
+    });
+  </script>
+</body>
+</html>

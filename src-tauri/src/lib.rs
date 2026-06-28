@@ -75,6 +75,30 @@ pub fn run() {
 
             app.manage(AppState { storage, whisper, llama, settings_path, history_db_path: db_path });
 
+            // Create the floating overlay window that shows recording/transcribing
+            // status near the cursor. It starts hidden and is positioned +
+            // shown by overlay::show() in the pipeline.
+            #[cfg(desktop)]
+            {
+                use tauri::{WebviewUrl, WebviewWindowBuilder};
+                if app.get_webview_window("overlay").is_none() {
+                    let _ = WebviewWindowBuilder::new(
+                        app,
+                        "overlay",
+                        WebviewUrl::App("overlay.html".into()),
+                    )
+                    .title("AI Voice Input")
+                    .inner_size(280.0, 64.0)
+                    .resizable(false)
+                    .decorations(false)
+                    .always_on_top(true)
+                    .skip_taskbar(true)
+                    .focused(false)
+                    .visible(false)
+                    .build();
+                }
+            }
+
             // Register global hotkey
             use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
             if let Some(sc) = hotkey::parse_hotkey(&hotkey_str) {
