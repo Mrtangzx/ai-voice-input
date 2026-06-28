@@ -71,6 +71,18 @@ async fn inner(
         return Err(anyhow!("empty recording"));
     }
 
+    // Reject silent recordings before paying for ASR. SenseVoice hallucinates
+    // multilingual text on near-silence, so a user who just fat-fingered the
+    // hotkey would otherwise get "transfer esperar Sol Kopf открыв caval"
+    // pasted into their foreground app.
+    // RMS threshold of 0.005 ≈ -46 dBFS - well below normal speech but above
+    // pure silence or distant ambient hum.
+    let rms: f32 = (pcm.iter().map(|s| s * s).sum::<f32>() / pcm.len() as f32).sqrt();
+    if rms < 0.005 {
+        return Err(anyhow!("recording too quiet (rms={:.4})", rms));
+    }
+    tracing::info!("recording ok: rms={:.4}, {} samples", rms, pcm.len());
+
     let _ = overlay::show(&app, "transcribing", None);
     let _ = app.emit("pipeline-status", serde_json::json!({"phase":"transcribing"}));
     let sample_rate = 16000;
