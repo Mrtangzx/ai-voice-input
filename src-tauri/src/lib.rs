@@ -9,6 +9,7 @@ mod overlay;
 mod pipeline;
 
 use std::sync::Arc;
+use std::time::Duration;
 use sidecar::{Sidecar, SidecarKind};
 use storage::Storage;
 
@@ -43,10 +44,33 @@ pub fn run() {
             let whisper = Arc::new(Sidecar::new(SidecarKind::Whisper, "http://127.0.0.1:8178"));
             let llama   = Arc::new(Sidecar::new(SidecarKind::Llama,   "http://127.0.0.1:8188"));
 
-            // Best-effort spawn of sidecars (ignore failures - will retry on first use)
+            // Spawn sidecars at startup. We log failures (visible in dev console)
+            // and wait briefly for each to come online so the first recording
+            // doesn't race the model loader. Whisper loads faster than llama.
+            let app_handle = app.handle().clone();
             tauri::async_runtime::block_on(async {
-                let _ = sidecar::spawn(&app.handle(), SidecarKind::Whisper).await;
-                let _ = sidecar::spawn(&app.handle(), SidecarKind::Llama).await;
+                match sidecar::spawn(&app_handle, SidecarKind::Whisper).await {
+                    Ok(_) => {
+                        tracing::info!("whisper sidecar spawned");
+                        if !whisper.wait_ready(Duration::from_secs(60), Duration::from_millis(500)).await {
+                            tracing::warn!("whisper sidecar did not respond healthy within 60s");
+                        } else {
+                            tracing::info!("whisper sidecar healthy on :8178");
+                        }
+                    }
+                    Err(e) => tracing::error!("failed to spawn whisper sidecar: {e}"),
+                }
+                match sidecar::spawn(&app_handle, SidecarKind::Llama).await {
+                    Ok(_) => {
+                        tracing::info!("llama sidecar spawned");
+                        if !llama.wait_ready(Duration::from_secs(120), Duration::from_secs(1)).await {
+                            tracing::warn!("llama sidecar did not respond healthy within 120s");
+                        } else {
+                            tracing::info!("llama sidecar healthy on :8188");
+                        }
+                    }
+                    Err(e) => tracing::error!("failed to spawn llama sidecar: {e}"),
+                }
             });
 
             app.manage(AppState { storage, whisper, llama, settings_path, history_db_path: db_path });

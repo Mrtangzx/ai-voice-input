@@ -56,7 +56,8 @@ async fn sha256_file(p: &Path) -> Result<String> {
 }
 
 pub async fn download_one(app: &AppHandle, spec: ModelSpec) -> Result<()> {
-    let models_dir = app.path().resource_dir()?.join("sidecar").join("models");
+    let sidecar_dir = crate::sidecar::resolve_sidecar_dir(app)?;
+    let models_dir = sidecar_dir.join("models");
     ensure_dir(&models_dir).await?;
     let target = spec.filename_path(&models_dir);
 
@@ -101,17 +102,46 @@ pub async fn download_one(app: &AppHandle, spec: ModelSpec) -> Result<()> {
 
 #[derive(Serialize, Clone)]
 pub struct ModelStatus {
+    /// Whisper ONNX model files are present (voice → text will work offline).
     pub whisper_installed: bool,
+    /// Qwen GGUF model file is present (needed for local LLM cleanup).
+    pub llama_model_installed: bool,
+    /// llama-server binary is present and non-empty (needed to RUN the local LLM).
+    /// When false, local LLM is unusable even if `llama_model_installed` is true.
+    pub llama_binary_installed: bool,
+    /// True when both llama model AND binary are present and usable.
     pub llama_installed: bool,
+    /// Human-readable path to the sidecar directory the app is using.
+    pub sidecar_dir: String,
 }
 
 #[tauri::command]
 pub async fn status(app: AppHandle) -> Result<ModelStatus, String> {
-    let models_dir = app.path().resource_dir()
-        .map_err(|e| e.to_string())?.join("sidecar").join("models");
+    let sidecar_dir = crate::sidecar::resolve_sidecar_dir(&app)
+        .map_err(|e| e.to_string())?;
+    let models_dir = sidecar_dir.join("models");
     let whisper_installed = ModelSpec::whisper_medium().filename_path(&models_dir).exists();
-    let llama_installed = ModelSpec::qwen_7b_q4().filename_path(&models_dir).exists();
-    Ok(ModelStatus { whisper_installed, llama_installed })
+    let llama_model_installed = ModelSpec::qwen_7b_q4().filename_path(&models_dir).exists();
+
+    // The llama-server binary is shipped via Tauri's `externalBin` in the
+    // build bundle, or sits in src-tauri/sidecar/ in dev. Check both.
+    let llama_binary_candidates = [
+        sidecar_dir.join("llama-server-x86_64-pc-windows-gnu.exe"),
+        sidecar_dir.join("llama-server.exe"),
+    ];
+    let llama_binary_installed = llama_binary_candidates
+        .iter()
+        .any(|p| p.exists() && std::fs::metadata(p).map(|m| m.len() > 0).unwrap_or(false));
+
+    let llama_installed = llama_model_installed && llama_binary_installed;
+
+    Ok(ModelStatus {
+        whisper_installed,
+        llama_model_installed,
+        llama_binary_installed,
+        llama_installed,
+        sidecar_dir: sidecar_dir.display().to_string(),
+    })
 }
 
 #[tauri::command]

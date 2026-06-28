@@ -15,7 +15,13 @@ type Settings = {
   llm_model: string;
 };
 
-type ModelStatus = { whisper_installed: boolean; llama_installed: boolean };
+type ModelStatus = {
+  whisper_installed: boolean;
+  llama_model_installed: boolean;
+  llama_binary_installed: boolean;
+  llama_installed: boolean;
+  sidecar_dir: string;
+};
 
 const PROVIDER_OPTIONS = [
   { value: 'local', label: '本地 Qwen (4.7GB 下载)', needsKey: false, defaultModel: 'local' },
@@ -31,7 +37,13 @@ const MODEL_PRESETS: Record<string, string[]> = {
 
 export default function SettingsView() {
   const [s, setS] = useState<Settings | null>(null);
-  const [status, setStatus] = useState<ModelStatus>({ whisper_installed: false, llama_installed: false });
+  const [status, setStatus] = useState<ModelStatus>({
+    whisper_installed: false,
+    llama_model_installed: false,
+    llama_binary_installed: false,
+    llama_installed: false,
+    sidecar_dir: '',
+  });
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState<{ name: string; percent: number } | null>(null);
   const [showKey, setShowKey] = useState(false);
@@ -186,7 +198,15 @@ export default function SettingsView() {
           <fieldset style={{ border: '1px solid #334155', borderRadius: 6, padding: 12, marginTop: 12 }}>
             <legend style={{ fontSize: 12, color: '#94a3b8' }}>本地模型状态</legend>
             <div>Whisper (语音转文字): {status.whisper_installed ? '✓ 已安装' : '✗ 未安装'}</div>
-            <div>Qwen LLM (文本整理): {status.llama_installed ? '✓ 已安装' : '✗ 未安装'}</div>
+            <div>Qwen 模型文件: {status.llama_model_installed ? '✓ 已下载' : '✗ 未下载'}</div>
+            <div>llama-server 二进制: {status.llama_binary_installed ? '✓ 已安装' : '✗ 缺失或为空'}</div>
+            {status.llama_model_installed && !status.llama_binary_installed && (
+              <div style={{ marginTop: 8, padding: 8, background: '#7c2d12', color: '#fed7aa', borderRadius: 4, fontSize: 12 }}>
+                模型文件已下载但 llama-server 二进制缺失，本地 LLM 无法启动。<br />
+                路径: <code style={{ fontSize: 11 }}>{status.sidecar_dir}</code><br />
+                解决：① 切换到上方"☁️ 在线云端 API" ② 或手动把 llama-server.exe 放到上述目录
+              </div>
+            )}
             {!bothInstalled && (
               <>
                 <button

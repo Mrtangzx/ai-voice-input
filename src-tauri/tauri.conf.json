@@ -32,6 +32,10 @@
       "sidecar/whisper-server",
       "sidecar/llama-server"
     ],
-    "resources": ["sidecar/models/*"]
+    "resources": [
+      "sidecar/models/*",
+      "sidecar/whisper-asr.py",
+      "sidecar/whisper-model/*"
+    ]
   }
 }

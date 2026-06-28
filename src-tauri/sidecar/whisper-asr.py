@@ -60,6 +60,10 @@ class WhisperService:
                 str(self.model_dir),
                 use_cache=False,
                 session_options=sess_opts,
+                # The ONNX export uses _fp16 suffix; without these hints
+                # optimum fails with "Could not find any ONNX files".
+                encoder_file_name="encoder_model_fp16.onnx",
+                decoder_file_name="decoder_model_merged_fp16.onnx",
             )
             self.processor = WhisperProcessor.from_pretrained(str(self.model_dir))
             self.loaded = True

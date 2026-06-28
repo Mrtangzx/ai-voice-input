@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
-type ModelStatus = { whisper_installed: boolean; llama_installed: boolean };
+type ModelStatus = {
+  whisper_installed: boolean;
+  llama_model_installed: boolean;
+  llama_binary_installed: boolean;
+  llama_installed: boolean;
+  sidecar_dir: string;
+};
 type Mode = 'choose' | 'downloading' | 'cloud' | 'error' | 'done';
 
 export default function FirstRun({ onConfigured }: { onConfigured: () => void }) {
@@ -82,28 +88,28 @@ export default function FirstRun({ onConfigured }: { onConfigured: () => void })
 
           <div style={{ marginTop: 24, display: 'grid', gap: 12 }}>
             <button
-              onClick={startDownload}
-              style={{ padding: '16px 20px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left' }}
+              onClick={() => { setMode('cloud'); setProvider('deepseek'); setModel('deepseek-chat'); }}
+              style={{ padding: '16px 20px', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left', borderLeft: '4px solid #38bdf8' }}
             >
-              <div style={{ fontSize: 16, fontWeight: 600 }}>📦 下载所有本地模型</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>☁️ 推荐：使用云端 API</div>
               <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
-                Whisper + 本地 Qwen LLM（约 6GB，完全离线）
+                仅下载 Whisper 模型（~1.5GB），AI 整理用 DeepSeek/通义千问在线 API。启动快、效果更好。
               </div>
             </button>
 
             <button
-              onClick={() => { setMode('cloud'); setProvider('deepseek'); setModel('deepseek-chat'); }}
-              style={{ padding: '16px 20px', background: '#0ea5e9', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left' }}
+              onClick={startDownload}
+              style={{ padding: '16px 20px', background: '#2563eb', color: 'white', border: 'none', borderRadius: 8, cursor: 'pointer', textAlign: 'left' }}
             >
-              <div style={{ fontSize: 16, fontWeight: 600 }}>☁️ 仅使用云端 API</div>
+              <div style={{ fontSize: 16, fontWeight: 600 }}>📦 完全离线：下载所有本地模型</div>
               <div style={{ fontSize: 12, opacity: 0.85, marginTop: 4 }}>
-                仅下载 Whisper 模型（~1.5GB），AI 整理用 DeepSeek/通义千问在线 API
+                Whisper + 本地 Qwen LLM（约 6GB）。需要联网下载且磁盘空间充足。
               </div>
             </button>
           </div>
 
           <p style={{ color: '#94a3b8', fontSize: 12, marginTop: 24 }}>
-            推荐：选择云端 API 启动更快、占用空间更小、整理效果也更好。
+            如果本地 LLM 二进制（llama-server.exe）下载失败，App 会自动用原始转写结果，不需要重装。
           </p>
         </div>
       );
