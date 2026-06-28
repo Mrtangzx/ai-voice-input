@@ -15,6 +15,13 @@ pub fn parse_hotkey(s: &str) -> Option<tauri_plugin_global_shortcut::Shortcut> {
         "v" => Code::KeyV,
         "t" => Code::KeyT,
         "z" => Code::KeyZ,
+        "f1" => Code::F1,
+        "f2" => Code::F2,
+        // The '+' (plus) key is a hotkey delimiter in this string format, so
+        // users can't write Alt+Shift+Plus directly. Allow them to write
+        // Alt+Shift+=  instead, which is the same physical key with Shift
+        // held.
+        "=" | "plus" | "+" => Code::Equal,
         "enter" | "return" => Code::Enter,
         _ => return None,
     };

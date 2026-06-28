@@ -23,6 +23,10 @@ pub struct AppState {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Hotkey precedence: AV_HOTKEY env var > settings.json > Ctrl+Shift+Space.
+    // The env var lets power users override without touching disk (e.g. for
+    // testing). The settings.json path is the normal one - users edit it via
+    // the Settings page or the textbox in the UI.
     let hotkey_str = std::env::var("AV_HOTKEY").unwrap_or_else(|_| "Ctrl+Shift+Space".into());
 
     tauri::Builder::default()
@@ -73,7 +77,7 @@ pub fn run() {
                 }
             });
 
-            app.manage(AppState { storage, whisper, llama, settings_path, history_db_path: db_path });
+            app.manage(AppState { storage, whisper, llama, settings_path: settings_path.clone(), history_db_path: db_path });
 
             // Overlay window creation disabled for crash debugging.
             // The pipeline still emits "pipeline-status" events to the main
@@ -81,9 +85,20 @@ pub fn run() {
             // TODO: re-enable with simpler config (e.g. no focused(false))
             // after we confirm what's panicking.
 
-            // Register global hotkey
+            // Register global hotkey. Resolve from settings.json so users can
+            // change it in the Settings page or by editing the file directly;
+            // AV_HOTKEY env var is just a startup override for testing.
+            let resolved_hotkey = std::env::var("AV_HOTKEY")
+                .ok()
+                .or_else(|| {
+                    crate::commands::settings::Settings::load_or_default(&settings_path)
+                        .ok()
+                        .map(|s| s.hotkey)
+                })
+                .unwrap_or_else(|| "Ctrl+Shift+Space".into());
+            tracing::info!("registering global hotkey: {}", resolved_hotkey);
             use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
-            if let Some(sc) = hotkey::parse_hotkey(&hotkey_str) {
+            if let Some(sc) = hotkey::parse_hotkey(&resolved_hotkey) {
                 let handle = app.handle().clone();
                 app.global_shortcut().on_shortcut(sc, move |_app, _sc, event| {
                     if event.state == ShortcutState::Pressed {
@@ -95,6 +110,24 @@ pub fn run() {
                         hotkey::request_stop();
                     }
                 })?;
+            } else {
+                tracing::error!(
+                    "hotkey {:?} could not be parsed - falling back to default",
+                    resolved_hotkey
+                );
+                if let Some(sc) = hotkey::parse_hotkey("Ctrl+Shift+Space") {
+                    let handle = app.handle().clone();
+                    app.global_shortcut().on_shortcut(sc, move |_app, _sc, event| {
+                        if event.state == ShortcutState::Pressed {
+                            let h = handle.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = commands::recording::start_via_handle(h).await;
+                            });
+                        } else {
+                            hotkey::request_stop();
+                        }
+                    })?;
+                }
             }
 
             // System tray icon
