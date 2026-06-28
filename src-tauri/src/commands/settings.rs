@@ -27,10 +27,15 @@ fn default_llm_provider() -> LlmProvider { LlmProvider::Local }
 fn default_llm_model() -> String { "deepseek-chat".into() }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "snake_case")]
 pub enum LlmProvider {
+    #[serde(rename = "local")]
     Local,
+    // JS frontends send "deepseek" (one word). The default snake_case rule
+    // would turn DeepSeek into "deep_seek", which is what the error
+    // "unknown variant `deepseek`" was about. Match the JS spelling exactly.
+    #[serde(rename = "deepseek")]
     DeepSeek,
+    #[serde(rename = "qwen_dashscope")]
     QwenDashScope,
 }
 
