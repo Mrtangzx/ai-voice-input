@@ -13,6 +13,8 @@ pub fn parse_hotkey(s: &str) -> Option<tauri_plugin_global_shortcut::Shortcut> {
     let code = match key.as_str() {
         "space" => Code::Space,
         "v" => Code::KeyV,
+        "t" => Code::KeyT,
+        "z" => Code::KeyZ,
         "enter" | "return" => Code::Enter,
         _ => return None,
     };
